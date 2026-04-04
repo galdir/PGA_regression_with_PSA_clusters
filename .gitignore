@@ -141,5 +141,7 @@ my_dir/
 *.zip
 *.keras
 
+*.pyc
+
 # Saved models
 *.joblib
