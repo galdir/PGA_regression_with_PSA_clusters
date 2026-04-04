@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
 # Suprimir warnings de divisão por zero nas médias espectrais (comportamento esperado do script original)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -96,6 +97,29 @@ def calculate_psa_means(df_psa_subset: pd.DataFrame):
         'spectral_horiz_means': df_horiz_spectral_mean,
         'spectral_vert_means': df_vertical_spectral_mean
     }
+
+def find_optimal_k(df_train_mean: pd.DataFrame, min_k: int = 2, max_k: int = 8, random_state: int = 42) -> int:
+    """
+    Escalona os dados de treino, avalia os clusters usando a métrica Silhouette Score 
+    (para valores entre min_k e max_k) e retorna o K que obteve a pontuação mais alta.
+    """
+    scaler = MinMaxScaler()
+    X_train_scaled = scaler.fit_transform(df_train_mean)
+    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_mean.index, columns=df_train_mean.columns).T
+    
+    best_k = 2
+    best_score = -1
+    
+    for k in range(min_k, max_k + 1):
+        kmeans = KMeans(n_clusters=k, random_state=random_state, n_init=10)
+        labels = kmeans.fit_predict(df_train_scaled_t)
+        score = silhouette_score(df_train_scaled_t, labels)
+        
+        if score > best_score:
+            best_score = score
+            best_k = k
+            
+    return best_k
 
 def generate_clusters(df_train_mean: pd.DataFrame, df_test_mean: pd.DataFrame, k: int = 4, random_state: int = 42):
     """

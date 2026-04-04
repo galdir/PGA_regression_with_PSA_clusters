@@ -26,3 +26,7 @@ Este documento lista oportunidades arquiteturais, estatísticas e de modelagem p
 * **Sugestão:** Executar o pipeline (com Optuna) desabilitando temporariamente o `remove_outliers` no conjunto de treino. Ao remover registros extremos da distribuição de treino, podemos estar impedindo o XGBoost e a Random Forest de aprender as regras que preveem os tremores mais atípicos do conjunto de teste.
 
 ## 6. busca de hiperparametros usando atributos de clusterização
+
+## 7. Hipotese: usar gmm no clustering
+
+## 8. Hipotese: Tratar o "K" como um Hiperparâmetro (A abordagem ideal) A
