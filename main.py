@@ -102,22 +102,54 @@ def main():
     print("   -> Clusterização concluída. Datasets de treino e teste agora possuem as features de cluster.")
 
     print("\n7. Preparando para Modelagem...")
-    from modeling import get_preprocessor, build_random_forest, build_xgboost
+    from modeling import (
+        get_preprocessor, build_linear_regression, build_polynomial_regression, 
+        build_elasticnet, build_random_forest, build_xgboost
+    )
     from evaluation import model_experiment, save_pipelines, save_experiments_results
     import os
+    import json
+    
+    def get_tuned_params(model_key):
+        """Lê os parâmetros do arquivo gerado pelo run_tuning.py, caso exista."""
+        param_file = os.path.join(config.RESULTS_DIR, f"tuning_results_{model_key}.json")
+        if os.path.exists(param_file):
+            with open(param_file, 'r', encoding='utf-8') as f:
+                return json.load(f).get('best_params', {})
+        return {}
     
     experiments = {}
     trained_pipelines = {}
+    
+    rf_params = get_tuned_params('rf')
+    xgb_params = get_tuned_params('xgb')
 
     # Modelos Base (Sem features de Cluster)
     print("   -> Treinando modelos BASE (Sem features de Cluster)")
     preprocessor_base = get_preprocessor(num_attributes=config.NUM_ATTRIBUTES)
     
-    rf_base = build_random_forest(preprocessor_base)
+    # Linear Regression
+    lr_base = build_linear_regression(preprocessor_base)
+    model_experiment(df_train_clean, df_test, lr_base, experiments, 'Linear Regression', target_col='peak_ground_acceleration')
+    trained_pipelines['Linear Regression'] = lr_base
+
+    # Polynomial Regression
+    poly_base = build_polynomial_regression(preprocessor_base)
+    model_experiment(df_train_clean, df_test, poly_base, experiments, 'Polynomial Regression', target_col='peak_ground_acceleration')
+    trained_pipelines['Polynomial Regression'] = poly_base
+
+    # Polynomial ElasticNet
+    elastic_base = build_elasticnet(preprocessor_base)
+    model_experiment(df_train_clean, df_test, elastic_base, experiments, 'Polynomial ElasticNet', target_col='peak_ground_acceleration')
+    trained_pipelines['Polynomial ElasticNet'] = elastic_base
+
+    # Random Forest
+    rf_base = build_random_forest(preprocessor_base, **rf_params)
     model_experiment(df_train_clean, df_test, rf_base, experiments, 'Random Forest', target_col='peak_ground_acceleration')
     trained_pipelines['Random Forest'] = rf_base
 
-    xgb_base = build_xgboost(preprocessor_base)
+    # XGBoost
+    xgb_base = build_xgboost(preprocessor_base, **xgb_params)
     model_experiment(df_train_clean, df_test, xgb_base, experiments, 'XGBoost', target_col='peak_ground_acceleration')
     trained_pipelines['XGBoost'] = xgb_base
     
@@ -131,6 +163,18 @@ def main():
         num_attr_cluster = config.NUM_ATTRIBUTES + [cluster_col]
         preprocessor_cluster = get_preprocessor(num_attributes=num_attr_cluster)
         
+        lr_cluster = build_linear_regression(preprocessor_cluster)
+        model_experiment(df_train_clean, df_test, lr_cluster, experiments, f'Linear Regression with PSA {cluster_col}', target_col='peak_ground_acceleration')
+        trained_pipelines[f'Linear Regression with PSA {cluster_col}'] = lr_cluster
+
+        poly_cluster = build_polynomial_regression(preprocessor_cluster)
+        model_experiment(df_train_clean, df_test, poly_cluster, experiments, f'Polynomial Regression with PSA {cluster_col}', target_col='peak_ground_acceleration')
+        trained_pipelines[f'Polynomial Regression with PSA {cluster_col}'] = poly_cluster
+
+        elastic_cluster = build_elasticnet(preprocessor_cluster)
+        model_experiment(df_train_clean, df_test, elastic_cluster, experiments, f'Polynomial ElasticNet with PSA {cluster_col}', target_col='peak_ground_acceleration')
+        trained_pipelines[f'Polynomial ElasticNet with PSA {cluster_col}'] = elastic_cluster
+
         rf_cluster = build_random_forest(preprocessor_cluster)
         model_experiment(df_train_clean, df_test, rf_cluster, experiments, f'Random Forest with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'Random Forest with PSA {cluster_col}'] = rf_cluster
@@ -143,6 +187,17 @@ def main():
     save_experiments_results(experiments, os.path.join(config.RESULTS_DIR, 'experiments_results.csv'))
     save_pipelines(trained_pipelines, config.TRAINED_PIPELINES_DIR)
     
+    print("\n--- Tabela Final de Resultados (Ordenada por Test RMSE) ---")
+    import pandas as pd
+    df_results = pd.DataFrame.from_dict(
+        experiments, 
+        orient='index', 
+        columns=['Test RMSE', 'R2', 'CI Lower', 'CI Upper']
+    )
+    df_results.index.name = 'Model'
+    df_results.sort_values(by='Test RMSE', ascending=True, inplace=True)
+    print(df_results.to_string())
+
     print("\n9. Visualizações Finais...")
     from visualization import plot_regression_scatter, plot_error_analysis
     
