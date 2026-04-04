@@ -12,7 +12,7 @@ Via linha de comando, passe o modelo desejado e (opcionalmente) o número de ten
     # Otimizar XGBoost com 100 tentativas
     python run_tuning.py --model xgb --trials 100
 
-    # Otimizar Random Forest com 50 tentativas (padrão)
+    # Otimizar Random Forest com 500 tentativas (padrão)
     python run_tuning.py --model rf
     
     # Otimizar Rede Neural (DNN) permitindo até 30 épocas de busca
@@ -21,14 +21,14 @@ Via linha de comando, passe o modelo desejado e (opcionalmente) o número de ten
 Argumentos:
 -----------
 --model  : (Obrigatório) 'rf' (Random Forest), 'xgb' (XGBoost) ou 'dnn' (Deep Neural Network).
---trials : (Opcional) Número máximo de iterações/épocas para a busca. Padrão: 300 para RF/XGB, 50 para DNN.
+--trials : (Opcional) Número máximo de iterações/épocas para a busca. Padrão: 500 para RF/XGB, 100 para DNN.
 """
 
 import argparse
 import json
 import os
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 
 import config
 from data_loader import load_pga_data, load_psa_data, get_common_records
@@ -55,7 +55,7 @@ def prepare_data():
     
     df_train_clean = remove_outliers(
         df_train, 
-        features=config.SELECTED_ATTRIBUTES, 
+        features=config.OUTLIER_FEATURES, 
         n_neighbors=200
     )
     
@@ -76,7 +76,7 @@ def main():
     y_train = df_train['peak_ground_acceleration']
     groups = df_train['earthquake_id']
 
-    preprocessor = get_preprocessor(num_attributes=config.NUM_ATTRIBUTES)
+    preprocessor = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES)
     
     # 2. Configuração de Saída
     os.makedirs(config.RESULTS_DIR, exist_ok=True)
@@ -86,16 +86,16 @@ def main():
     
     # 3. Execução da Busca por Modelo
     if args.model == 'rf':
-        trials = args.trials if args.trials is not None else 300
+        trials = args.trials if args.trials is not None else 500
         print(f"Máximo de iterações definidas: {trials}")
-        study = tune_random_forest(X_train, y_train, preprocessor, n_trials=trials, random_state=config.RANDOM_STATE)
+        study = tune_random_forest(X_train, y_train, groups, preprocessor, n_trials=trials, random_state=config.RANDOM_STATE)
         results = {
             "best_score_neg_rmse": study.best_value,
             "best_params": study.best_params
         }
         
     elif args.model == 'xgb':
-        trials = args.trials if args.trials is not None else 300
+        trials = args.trials if args.trials is not None else 500
         print(f"Máximo de iterações definidas: {trials}")
         study = tune_xgboost(X_train, y_train, groups, preprocessor, n_trials=trials, random_state=config.RANDOM_STATE)
         results = {
@@ -104,12 +104,18 @@ def main():
         }
         
     elif args.model == 'dnn':
-        trials = args.trials if args.trials is not None else 50
+        trials = args.trials if args.trials is not None else 100
         print(f"Máximo de épocas definidas: {trials}")
         # DNN requer divisão de validação extra a partir do treino, conforme notebook original
-        X_train_dnn, X_valid_dnn, y_train_dnn, y_valid_dnn = train_test_split(
-            X_train, y_train, test_size=0.2, random_state=config.RANDOM_STATE
-        )
+        # Utilizando GroupShuffleSplit para evitar data leakage de terremotos
+        gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=config.RANDOM_STATE)
+        train_idx, valid_idx = next(gss.split(X_train, y_train, groups))
+        
+        X_train_dnn = X_train.iloc[train_idx]
+        X_valid_dnn = X_train.iloc[valid_idx]
+        y_train_dnn = y_train.iloc[train_idx]
+        y_valid_dnn = y_train.iloc[valid_idx]
+        
         tuner = tune_dnn(X_train_dnn, y_train_dnn, X_valid_dnn, y_valid_dnn, preprocessor, max_epochs=trials)
         
         best_trial = tuner.oracle.get_best_trials(num_trials=1)[0]

@@ -13,18 +13,15 @@ RANDOM_STATE = 42
 RESULTS_DIR = './paper_1_results_revised/'
 TRAINED_PIPELINES_DIR = './paper_1_results_revised/trained_pipelines/'
 
-# Definição de Features
-SELECTED_ATTRIBUTES = [
+# Features Numéricas para Modelagem (Exclui o Target, substitui ângulo bruto pelo log)
+MODEL_NUM_FEATURES = [
     'magnitude', 'calculated_epicentral_distance', 'depth', 
-    'calculated_incidence_angle', 'calculated_hypocentral_distance', 
-    'peak_ground_acceleration', 'source_off_shore', 'calculated_azimuth'
+    'log_incidence_angle', 'calculated_hypocentral_distance', 
+    'source_off_shore'
 ]
 
-NUM_ATTRIBUTES = [
-    'magnitude', 'calculated_epicentral_distance', 'depth', 
-    'calculated_incidence_angle', 'calculated_hypocentral_distance', 
-    'source_off_shore', 'log_incidence_angle'
-]
+# Features usadas na detecção de Outliers (Inclui o Target e as mesmas features do modelo)
+OUTLIER_FEATURES = MODEL_NUM_FEATURES + ['peak_ground_acceleration']
 
 CLUSTER_COLUMNS = [
     'clusters_spectral_coefs', 'clusters_spectral_means', 

@@ -1,3 +1,25 @@
+"""
+Módulo principal de execução do pipeline de Machine Learning para predição de PGA.
+
+Este projeto testa a hipótese de que a utilização de dados de clusterização 
+baseados na forma dos sinais de Aceleração Pseudo-Espectral (PSA) das estações 
+sísmicas ajuda a reduzir o erro de predição da Aceleração de Pico no Solo 
+(PGA - Peak Ground Acceleration).
+
+O fluxo orquestrado por este script inclui:
+1. Carregamento e cruzamento dos dados brutos (PGA e PSA).
+2. Engenharia de atributos (Feature Engineering).
+3. Separação de Treino/Teste agrupada por terremoto (para evitar vazamento de dados).
+4. Remoção de outliers exclusivamente no conjunto de treino.
+5. Processamento de espectros PSA e geração de features de clusterização (KMeans).
+6. Treinamento e avaliação de vários modelos (Regressão Linear, Random Forest, XGBoost, DNN),
+   comparando o desempenho dos modelos "Base" (sem PSA) contra os modelos "Com Cluster".
+7. Salvamento dos modelos treinados, métricas de avaliação e visualizações comparativas.
+
+Como executar:
+    python main.py
+"""
+
 import config
 from data_loader import load_pga_data, load_psa_data, get_common_records, get_psa_station_earthquake_ids
 from preprocessing import split_train_test_by_earthquake, create_features, remove_outliers
@@ -55,7 +77,7 @@ def main():
     print("\n5. Removendo Outliers (Apenas no conjunto de Treino)...")
     df_train_clean = remove_outliers(
         df_train, 
-        features=config.SELECTED_ATTRIBUTES, 
+        features=config.OUTLIER_FEATURES, 
         n_neighbors=200
     )
     print(f"   -> Tamanho do Treino após remoção de outliers: {len(df_train_clean)}")
@@ -142,22 +164,26 @@ def main():
         if 'n_neurons' in dnn_params: dnn_kwargs['n_neurons'] = dnn_params['n_neurons']
         if 'activation' in dnn_params: dnn_kwargs['activation'] = dnn_params['activation']
         if 'learning_rate' in dnn_params: dnn_kwargs['learning_rate'] = dnn_params['learning_rate']
+        if 'dropout_rate' in dnn_params: dnn_kwargs['dropout_rate'] = dnn_params['dropout_rate']
         
         model = build_dnn_model(**dnn_kwargs)
         es = EarlyStopping(monitor='val_rmse', mode='min', verbose=0, patience=10, restore_best_weights=True)
         
-        model.fit(tf_x_train, y_train_dnn, epochs=100, callbacks=[es], validation_data=(tf_x_valid, y_valid_dnn), verbose=0)
+        y_train_dnn_log = np.log(y_train_dnn)
+        y_valid_dnn_log = np.log(y_valid_dnn)
+        
+        model.fit(tf_x_train, y_train_dnn_log, epochs=100, callbacks=[es], validation_data=(tf_x_valid, y_valid_dnn_log), verbose=0)
         
         pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('model', model)
         ])
         
-        train_predictions = pipeline.predict(df_train)
+        train_predictions = np.exp(pipeline.predict(df_train)).flatten()
         train_rmse = root_mean_squared_error(df_train['peak_ground_acceleration'], train_predictions)
         print(f"  -> Train RMSE: {train_rmse:.4f}")
         
-        predictions = pipeline.predict(df_test)
+        predictions = np.exp(pipeline.predict(df_test)).flatten()
         test_rmse = root_mean_squared_error(df_test['peak_ground_acceleration'], predictions)
         print(f"  -> Test RMSE: {test_rmse:.4f}")
         
@@ -179,7 +205,7 @@ def main():
 
     # Modelos Base (Sem features de Cluster)
     print("   -> Treinando modelos BASE (Sem features de Cluster)")
-    preprocessor_base = get_preprocessor(num_attributes=config.NUM_ATTRIBUTES)
+    preprocessor_base = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES)
     
     # Linear Regression
     lr_base = build_linear_regression(preprocessor_base)
@@ -216,7 +242,7 @@ def main():
             continue
             
         print(f"      - Cluster: {cluster_col}")
-        preprocessor_cluster = get_preprocessor(num_attributes=config.NUM_ATTRIBUTES, cat_attributes=[cluster_col])
+        preprocessor_cluster = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES, cat_attributes=[cluster_col])
         
         lr_cluster = build_linear_regression(preprocessor_cluster)
         model_experiment(df_train_clean, df_test, lr_cluster, experiments, f'Linear Regression with PSA {cluster_col}', target_col='peak_ground_acceleration')
