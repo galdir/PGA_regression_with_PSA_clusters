@@ -14,7 +14,7 @@ Atualmente, URLs, parâmetros de modelos e *flags* de execução (ex: `load_trai
 
 * **Ação:** Criar um arquivo `config.py` (ou `config.yaml`).
 * **O que extrair (copiar do original):** 
-  * URLs de download dos dados (ex: `raw_earthquakes_pga_url`).
+  * Caminhos locais dos dados (os arquivos CSV já estão disponíveis localmente, então substituímos as URLs originais de download por caminhos locais como `earthquakes_pga.csv`).
   * Caminhos de diretórios para salvar/carregar modelos (`./paper_1_results_revised/`).
   * Flags booleanas de controle de fluxo.
   * Definição de listas de colunas e *features* (ex: `selected_atributes`, `num_attributes`).
@@ -49,11 +49,12 @@ Criar novos módulos `.py` baseados na lógica do arquivo monolítico, cada um f
    * Centralizar toda a lógica envolvendo `matplotlib`, `seaborn` e `cartopy`.
    * Exemplos: Mapas de epicentros, curvas espectrais, gráficos de dispersão de erros e distribuições (histogramas).
 
-## Passo 3: Criação de um Ponto de Entrada (Entry Point)
-Criar um arquivo orquestrador, por exemplo, `main.py` ou `run_pipeline.py`.
+## Passo 3: Criação de Pontos de Entrada (Entry Points)
+Criar arquivos orquestradores para isolar a execução do fluxo principal e da otimização de modelos.
 
-* **Ação:** Este script não deve conter lógica complexa, apenas importar funções dos módulos criados no *Passo 2* e executá-las em sequência.
-* **Benefício:** Um desenvolvedor conseguirá ler o `main.py` de cima a baixo e entender exatamente as etapas do pipeline sem se perder em detalhes de implementação de gráficos ou *loops* extensos.
+* **`main.py`:** Script principal, sem lógica complexa, que importa as funções dos módulos criados no *Passo 2* e executa o pipeline end-to-end em sequência.
+* **`run_tuning.py`:** Script separado e dedicado exclusivamente à busca de hiperparâmetros (Hyperparameter Tuning). Isso isola a otimização demorada (Optuna, Keras Tuner) da execução rotineira do pipeline principal.
+* **Benefício:** Um desenvolvedor conseguirá ler o `main.py` de cima a baixo e entender exatamente as etapas do pipeline sem se perder em detalhes de implementação de gráficos, *loops* extensos ou rotinas de otimização pesadas.
 
 ## Passo 4: Eliminação de Variáveis Globais e Isolamento de Escopo
 Hoje o código original manipula *DataFrames* globalmente (ex: alterar `df` afeta tudo daqui para baixo).

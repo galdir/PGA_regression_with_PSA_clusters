@@ -1,0 +1,15 @@
+pandas
+numpy
+scikit-learn
+tensorflow
+keras-tuner
+xgboost
+optuna
+matplotlib
+seaborn
+geopandas
+yellowbrick
+cartopy
+scipy
+joblib
+gdown

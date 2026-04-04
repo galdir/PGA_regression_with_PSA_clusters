@@ -1,6 +1,6 @@
-# URLs dos dados
-RAW_EARTHQUAKES_PGA_URL = 'https://raw.githubusercontent.com/galdir/PGA_regression_with_PSA_clusters/main/earthquakes_pga.csv'
-RAW_EARTHQUAKES_PSA_URL = 'https://raw.githubusercontent.com/galdir/PGA_regression_with_PSA_clusters/main/earthquakes_psa_earthquakeid.csv'
+# Caminhos dos dados locais
+RAW_EARTHQUAKES_PGA_PATH = 'earthquakes_pga.csv'
+RAW_EARTHQUAKES_PSA_PATH = 'earthquakes_psa_earthquakeid.csv'
 
 # Flags de controle de execução
 LOAD_TRAINED_MODELS = False

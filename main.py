@@ -5,8 +5,8 @@ from clustering import split_psa_columns, calculate_psa_means, generate_clusters
 
 def main():
     print("1. Carregando os dados...")
-    df_pga = load_pga_data(config.RAW_EARTHQUAKES_PGA_URL)
-    df_psa = load_psa_data(config.RAW_EARTHQUAKES_PSA_URL)
+    df_pga = load_pga_data(config.RAW_EARTHQUAKES_PGA_PATH)
+    df_psa = load_psa_data(config.RAW_EARTHQUAKES_PSA_PATH)
     psa_ids = get_psa_station_earthquake_ids(df_psa)
     print(f"   -> Total de registros PGA originais: {len(df_pga)}")
     print(f"   -> Total de registros PSA originais (estações-terremoto únicas): {len(psa_ids)}")

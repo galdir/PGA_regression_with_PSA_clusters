@@ -14,6 +14,7 @@ import optuna
 import keras_tuner as kt
 from sklearn.model_selection import KFold, GroupKFold, cross_val_score
 import numpy as np
+import pandas as pd
 
 def get_preprocessor(num_attributes: list, cat_attributes: list = None) -> ColumnTransformer:
     """

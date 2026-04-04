@@ -21,7 +21,7 @@ Via linha de comando, passe o modelo desejado e (opcionalmente) o número de ten
 Argumentos:
 -----------
 --model  : (Obrigatório) 'rf' (Random Forest), 'xgb' (XGBoost) ou 'dnn' (Deep Neural Network).
---trials : (Opcional) Número máximo de iterações/épocas para a busca. O padrão é 50.
+--trials : (Opcional) Número máximo de iterações/épocas para a busca. Padrão: 300 para RF/XGB, 50 para DNN.
 """
 
 import argparse
@@ -41,8 +41,8 @@ def prepare_data():
     de treino limpos para a etapa de tuning.
     """
     print("Carregando e preparando os dados...")
-    df_pga = load_pga_data(config.RAW_EARTHQUAKES_PGA_URL)
-    df_psa = load_psa_data(config.RAW_EARTHQUAKES_PSA_URL)
+    df_pga = load_pga_data(config.RAW_EARTHQUAKES_PGA_PATH)
+    df_psa = load_psa_data(config.RAW_EARTHQUAKES_PSA_PATH)
     
     df_pga_common = get_common_records(df_pga, df_psa)
     df_pga_common = create_features(df_pga_common)
@@ -65,8 +65,8 @@ def main():
     parser = argparse.ArgumentParser(description="Executa a busca de hiperparâmetros por modelo.")
     parser.add_argument('--model', type=str, required=True, choices=['rf', 'xgb', 'dnn'],
                         help="Modelo para otimizar: 'rf' (Random Forest), 'xgb' (XGBoost) ou 'dnn' (Deep Neural Network)")
-    parser.add_argument('--trials', type=int, default=50, 
-                        help="Número de iterações/épocas máximas para a busca (padrão: 50)")
+    parser.add_argument('--trials', type=int, default=None, 
+                        help="Número de iterações/épocas máximas para a busca (Padrão: 300 para RF/XGB, 50 para DNN)")
     args = parser.parse_args()
 
     # 1. Preparação dos Dados
@@ -83,29 +83,34 @@ def main():
     results_file = os.path.join(config.RESULTS_DIR, f"tuning_results_{args.model}.json")
 
     print(f"\nIniciando busca de hiperparâmetros para: {args.model.upper()}")
-    print(f"Máximo de iterações/épocas definidas: {args.trials}")
     
     # 3. Execução da Busca por Modelo
     if args.model == 'rf':
-        study = tune_random_forest(X_train, y_train, preprocessor, n_trials=args.trials, random_state=config.RANDOM_STATE)
+        trials = args.trials if args.trials is not None else 300
+        print(f"Máximo de iterações definidas: {trials}")
+        study = tune_random_forest(X_train, y_train, preprocessor, n_trials=trials, random_state=config.RANDOM_STATE)
         results = {
             "best_score_neg_rmse": study.best_value,
             "best_params": study.best_params
         }
         
     elif args.model == 'xgb':
-        study = tune_xgboost(X_train, y_train, groups, preprocessor, n_trials=args.trials, random_state=config.RANDOM_STATE)
+        trials = args.trials if args.trials is not None else 300
+        print(f"Máximo de iterações definidas: {trials}")
+        study = tune_xgboost(X_train, y_train, groups, preprocessor, n_trials=trials, random_state=config.RANDOM_STATE)
         results = {
             "best_score_neg_rmse": study.best_value,
             "best_params": study.best_params
         }
         
     elif args.model == 'dnn':
+        trials = args.trials if args.trials is not None else 50
+        print(f"Máximo de épocas definidas: {trials}")
         # DNN requer divisão de validação extra a partir do treino, conforme notebook original
         X_train_dnn, X_valid_dnn, y_train_dnn, y_valid_dnn = train_test_split(
             X_train, y_train, test_size=0.2, random_state=config.RANDOM_STATE
         )
-        tuner = tune_dnn(X_train_dnn, y_train_dnn, X_valid_dnn, y_valid_dnn, preprocessor, max_epochs=args.trials)
+        tuner = tune_dnn(X_train_dnn, y_train_dnn, X_valid_dnn, y_valid_dnn, preprocessor, max_epochs=trials)
         
         best_trial = tuner.oracle.get_best_trials(num_trials=1)[0]
         results = {
