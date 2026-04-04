@@ -139,3 +139,7 @@ my_dir/
 *.prj
 *.cpg
 *.zip
+*.keras
+
+# Saved models
+*.joblib
