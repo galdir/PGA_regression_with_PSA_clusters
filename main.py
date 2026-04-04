@@ -101,7 +101,74 @@ def main():
         
     print("   -> Clusterização concluída. Datasets de treino e teste agora possuem as features de cluster.")
 
-    print("\n--- Pipeline inicial concluída com sucesso! ---")
+    print("\n7. Preparando para Modelagem...")
+    from modeling import get_preprocessor, build_random_forest, build_xgboost
+    from evaluation import model_experiment, save_pipelines, save_experiments_results
+    import os
+    
+    experiments = {}
+    trained_pipelines = {}
+
+    # Modelos Base (Sem features de Cluster)
+    print("   -> Treinando modelos BASE (Sem features de Cluster)")
+    preprocessor_base = get_preprocessor(num_attributes=config.NUM_ATTRIBUTES)
+    
+    rf_base = build_random_forest(preprocessor_base)
+    model_experiment(df_train_clean, df_test, rf_base, experiments, 'Random Forest', target_col='peak_ground_acceleration')
+    trained_pipelines['Random Forest'] = rf_base
+
+    xgb_base = build_xgboost(preprocessor_base)
+    model_experiment(df_train_clean, df_test, xgb_base, experiments, 'XGBoost', target_col='peak_ground_acceleration')
+    trained_pipelines['XGBoost'] = xgb_base
+    
+    # Modelos com features de Cluster
+    print("\n   -> Treinando modelos COM features de Cluster")
+    for cluster_col in config.CLUSTER_COLUMNS:
+        if cluster_col not in df_train_clean.columns:
+            continue
+            
+        print(f"      - Cluster: {cluster_col}")
+        num_attr_cluster = config.NUM_ATTRIBUTES + [cluster_col]
+        preprocessor_cluster = get_preprocessor(num_attributes=num_attr_cluster)
+        
+        rf_cluster = build_random_forest(preprocessor_cluster)
+        model_experiment(df_train_clean, df_test, rf_cluster, experiments, f'Random Forest with PSA {cluster_col}', target_col='peak_ground_acceleration')
+        trained_pipelines[f'Random Forest with PSA {cluster_col}'] = rf_cluster
+        
+        xgb_cluster = build_xgboost(preprocessor_cluster)
+        model_experiment(df_train_clean, df_test, xgb_cluster, experiments, f'XGBoost with PSA {cluster_col}', target_col='peak_ground_acceleration')
+        trained_pipelines[f'XGBoost with PSA {cluster_col}'] = xgb_cluster
+
+    print("\n8. Salvando Resultados e Pipelines...")
+    save_experiments_results(experiments, os.path.join(config.RESULTS_DIR, 'experiments_results.csv'))
+    save_pipelines(trained_pipelines, config.TRAINED_PIPELINES_DIR)
+    
+    print("\n9. Visualizações Finais...")
+    from visualization import plot_regression_scatter, plot_error_analysis
+    
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
+    
+    # Gráficos de Scatter
+    scatter_models = ['Random Forest', f'Random Forest with PSA {config.CLUSTER_COLUMNS[0]}']
+    if all(m in trained_pipelines for m in scatter_models):
+        print(f"   -> Gerando Scatter Plot para: {scatter_models}")
+        plot_regression_scatter(trained_pipelines, df_test, scatter_models, "Scatter RF - Base vs Cluster", 
+                                output_path=os.path.join(config.RESULTS_DIR, "scatter_rf.png"))
+                            
+    # Análise de Erros (XGBoost)
+    xgb_base_name = 'XGBoost'
+    xgb_cluster_name = f'XGBoost with PSA {config.CLUSTER_COLUMNS[0]}'
+    if xgb_base_name in trained_pipelines and xgb_cluster_name in trained_pipelines:
+        print("   -> Gerando Gráficos de Análise de Erro (XGBoost)")
+        pred_base = trained_pipelines[xgb_base_name].predict(df_test)
+        pred_cluster = trained_pipelines[xgb_cluster_name].predict(df_test)
+        
+        plot_error_analysis(df_test, pred_base, pred_cluster, 'magnitude', 'Magnitude', 
+                            output_path=os.path.join(config.RESULTS_DIR, "error_analysis_xgb_mag.png"))
+        plot_error_analysis(df_test, pred_base, pred_cluster, 'calculated_epicentral_distance', 'Distância Epicentral (km)', 
+                            output_path=os.path.join(config.RESULTS_DIR, "error_analysis_xgb_dist.png"))
+
+    print("\n--- Pipeline Completo Finalizado com Sucesso! ---")
 
 if __name__ == "__main__":
     main()
