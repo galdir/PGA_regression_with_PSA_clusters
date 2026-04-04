@@ -104,11 +104,17 @@ def main():
     print("\n7. Preparando para Modelagem...")
     from modeling import (
         get_preprocessor, build_linear_regression, build_polynomial_regression, 
-        build_elasticnet, build_random_forest, build_xgboost
+        build_elasticnet, build_random_forest, build_xgboost, build_dnn_model
     )
     from evaluation import model_experiment, save_pipelines, save_experiments_results
     import os
     import json
+    from sklearn.model_selection import train_test_split
+    from tensorflow.keras.callbacks import EarlyStopping
+    from sklearn.metrics import root_mean_squared_error, r2_score
+    from scipy import stats
+    import numpy as np
+    from sklearn.pipeline import Pipeline
     
     def get_tuned_params(model_key):
         """Lê os parâmetros do arquivo gerado pelo run_tuning.py, caso exista."""
@@ -121,8 +127,55 @@ def main():
     experiments = {}
     trained_pipelines = {}
     
+    def train_evaluate_dnn(df_train, df_test, preprocessor, model_name, dnn_params):
+        print(f"Executando experimento: {model_name}...")
+        
+        X_train_dnn, X_valid_dnn, y_train_dnn, y_valid_dnn = train_test_split(
+            df_train, df_train['peak_ground_acceleration'], test_size=0.2, random_state=config.RANDOM_STATE
+        )
+        
+        tf_x_train = preprocessor.fit_transform(X_train_dnn)
+        tf_x_valid = preprocessor.transform(X_valid_dnn)
+        
+        dnn_kwargs = {}
+        if 'n_hidden' in dnn_params: dnn_kwargs['n_hidden_layers'] = dnn_params['n_hidden']
+        if 'n_neurons' in dnn_params: dnn_kwargs['n_neurons'] = dnn_params['n_neurons']
+        if 'activation' in dnn_params: dnn_kwargs['activation'] = dnn_params['activation']
+        if 'learning_rate' in dnn_params: dnn_kwargs['learning_rate'] = dnn_params['learning_rate']
+        
+        model = build_dnn_model(**dnn_kwargs)
+        es = EarlyStopping(monitor='val_rmse', mode='min', verbose=0, patience=10, restore_best_weights=True)
+        
+        model.fit(tf_x_train, y_train_dnn, epochs=100, callbacks=[es], validation_data=(tf_x_valid, y_valid_dnn), verbose=0)
+        
+        pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('model', model)
+        ])
+        
+        train_predictions = pipeline.predict(df_train)
+        train_rmse = root_mean_squared_error(df_train['peak_ground_acceleration'], train_predictions)
+        print(f"  -> Train RMSE: {train_rmse:.4f}")
+        
+        predictions = pipeline.predict(df_test)
+        test_rmse = root_mean_squared_error(df_test['peak_ground_acceleration'], predictions)
+        print(f"  -> Test RMSE: {test_rmse:.4f}")
+        
+        r2 = r2_score(df_test['peak_ground_acceleration'], predictions)
+        print(f"  -> Test R2: {r2:.4f}")
+        
+        confidence = 0.95
+        squared_errors = (predictions.flatten() - df_test['peak_ground_acceleration'].values) ** 2
+        conf_interval = np.sqrt(stats.t.interval(confidence, len(squared_errors) - 1,
+                                 loc=np.mean(squared_errors),
+                                 scale=stats.sem(squared_errors)))
+        
+        experiments[model_name] = [test_rmse, r2, conf_interval[0], conf_interval[1]]
+        trained_pipelines[model_name] = pipeline
+
     rf_params = get_tuned_params('rf')
     xgb_params = get_tuned_params('xgb')
+    dnn_params = get_tuned_params('dnn')
 
     # Modelos Base (Sem features de Cluster)
     print("   -> Treinando modelos BASE (Sem features de Cluster)")
@@ -153,6 +206,9 @@ def main():
     model_experiment(df_train_clean, df_test, xgb_base, experiments, 'XGBoost', target_col='peak_ground_acceleration')
     trained_pipelines['XGBoost'] = xgb_base
     
+    # Deep Neural Network
+    train_evaluate_dnn(df_train_clean, df_test, preprocessor_base, 'Deep Neural Network', dnn_params)
+    
     # Modelos com features de Cluster
     print("\n   -> Treinando modelos COM features de Cluster")
     for cluster_col in config.CLUSTER_COLUMNS:
@@ -160,8 +216,7 @@ def main():
             continue
             
         print(f"      - Cluster: {cluster_col}")
-        num_attr_cluster = config.NUM_ATTRIBUTES + [cluster_col]
-        preprocessor_cluster = get_preprocessor(num_attributes=num_attr_cluster)
+        preprocessor_cluster = get_preprocessor(num_attributes=config.NUM_ATTRIBUTES, cat_attributes=[cluster_col])
         
         lr_cluster = build_linear_regression(preprocessor_cluster)
         model_experiment(df_train_clean, df_test, lr_cluster, experiments, f'Linear Regression with PSA {cluster_col}', target_col='peak_ground_acceleration')
@@ -182,6 +237,9 @@ def main():
         xgb_cluster = build_xgboost(preprocessor_cluster)
         model_experiment(df_train_clean, df_test, xgb_cluster, experiments, f'XGBoost with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'XGBoost with PSA {cluster_col}'] = xgb_cluster
+        
+        # Deep Neural Network
+        train_evaluate_dnn(df_train_clean, df_test, preprocessor_cluster, f'Deep Neural Network with PSA {cluster_col}', dnn_params)
 
     print("\n8. Salvando Resultados e Pipelines...")
     save_experiments_results(experiments, os.path.join(config.RESULTS_DIR, 'experiments_results.csv'))
