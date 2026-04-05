@@ -31,11 +31,9 @@ def model_experiment(train_set: pd.DataFrame, test_set: pd.DataFrame, pipeline, 
     print(f"  -> Test R2: {r2:.4f}")
 
     # Cálculo do intervalo de confiança para os erros ao quadrado
-    squared_errors = (predictions - test_set[target_col].values.flatten() if isinstance(predictions, np.ndarray) and predictions.ndim > 1 else test_set[target_col]) ** 2
-    if isinstance(squared_errors, pd.Series):
-        squared_errors = squared_errors.values
-    elif isinstance(squared_errors, pd.DataFrame):
-        squared_errors = squared_errors.values.flatten()
+    y_true = test_set[target_col].values.flatten()
+    y_pred = np.array(predictions).flatten()
+    squared_errors = (y_pred - y_true) ** 2
         
     conf_interval = np.sqrt(stats.t.interval(confidence, len(squared_errors) - 1,
                              loc=np.mean(squared_errors),

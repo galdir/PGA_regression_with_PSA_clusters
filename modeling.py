@@ -73,9 +73,9 @@ def build_elasticnet(preprocessor: ColumnTransformer, alpha: float = 0.1, l1_rat
         ))
     ])
 
-def build_random_forest(preprocessor: ColumnTransformer, n_estimators: int = 2100, 
-                        max_depth: int = 14, min_samples_split: int = 9, 
-                        min_samples_leaf: int = 4, max_features: float = 0.3) -> Pipeline:
+def build_random_forest(preprocessor: ColumnTransformer, n_estimators: int, 
+                        max_depth: int, min_samples_split: int, 
+                        min_samples_leaf: int, max_features: float) -> Pipeline:
     """Constrói a pipeline para Random Forest usando os melhores hiperparâmetros originais."""
     return Pipeline([
         ('preprocessor', preprocessor),
@@ -95,11 +95,11 @@ def build_random_forest(preprocessor: ColumnTransformer, n_estimators: int = 210
         ))
     ])
 
-def build_xgboost(preprocessor: ColumnTransformer, n_estimators: int = 1734, 
-                  learning_rate: float = 0.2543527611706547, max_depth: int = 18, 
-                  subsample: float = 0.5809548106071651, colsample_bytree: float = 0.8882288814017651, 
-                  min_child_weight: int = 1, gamma: float = 8.804203083872113e-07, 
-                  reg_alpha: float = 0.272597395385441, reg_lambda: float = 0.10188365398056981) -> Pipeline:
+def build_xgboost(preprocessor: ColumnTransformer, n_estimators: int, 
+                  learning_rate: float, max_depth: int, 
+                  subsample: float, colsample_bytree: float, 
+                  min_child_weight: int, gamma: float, 
+                  reg_alpha: float, reg_lambda: float) -> Pipeline:
     """Constrói a pipeline para XGBoost usando os melhores hiperparâmetros originais."""
     return Pipeline([
         ('preprocessor', preprocessor),
@@ -122,9 +122,9 @@ def build_xgboost(preprocessor: ColumnTransformer, n_estimators: int = 1734,
         ))
     ])
 
-def build_dnn_model(n_hidden_layers: int = 3, n_neurons: int = 419, 
-                    activation: str = "swish", learning_rate: float = 0.0005656677780014923,
-                    dropout_rate: float = 0.0) -> Sequential:
+def build_dnn_model(n_hidden_layers: int, n_neurons: int, 
+                    activation: str, learning_rate: float,
+                    dropout_rate: float) -> Sequential:
     """
     Constrói e compila o modelo Keras (Deep Neural Network) 
     usando os melhores hiperparâmetros encontrados pelo Keras Tuner.
@@ -198,23 +198,22 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
         param = {
             'objective': 'reg:squarederror',
             'n_estimators': trial.suggest_int('n_estimators', 100, 2100),
-            'learning_rate': trial.suggest_float('learning_rate',  1e-4, 0.3, log=True),
-            'max_depth': trial.suggest_int('max_depth', 3, 20), # Reduzido de 30 para 20 para evitar explosão de RAM
+            'learning_rate': trial.suggest_float('learning_rate',  1e-4, 0.05, log=True), # Amarrado para evitar overfit com muitas árvores
+            'max_depth': trial.suggest_int('max_depth', 2, 10), # Árvores rasas extrapolam de forma menos agressiva
             'subsample': trial.suggest_float('subsample', 0.1, 1.0),
             'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
             'min_child_weight': trial.suggest_int('min_child_weight', 0, 25),
-            'gamma': trial.suggest_float('gamma', 1e-8, 5, log=True),
-            'reg_alpha': trial.suggest_float('reg_alpha', 1e-2, 1e2, log=True),
-            'reg_lambda': trial.suggest_float('reg_lambda', 1e-2, 1e2, log=True),
+            'gamma': trial.suggest_float('gamma', 0.1, 5.0, log=True), # Força divisões mais significativas
+            'reg_alpha': trial.suggest_float('reg_alpha', 1.0, 1e2, log=True), # Regularização L1 mais severa (piso em 1.0)
+            'reg_lambda': trial.suggest_float('reg_lambda', 1.0, 1e2, log=True), # Regularização L2 mais severa (piso em 1.0)
             'random_state': random_state,
             'n_jobs': -1,
-            'early_stopping_rounds': 50 # Habilita parada antecipada
         }
 
         gkf = GroupKFold(n_splits=5)
         rmses = []
         
-        # Loop manual permite usar eval_set (Early Stopping) e Pruning (Optuna)
+        # Loop manual para avaliar o erro no espaço exponencial e usar Pruning (Optuna)
         for step, (train_idx, val_idx) in enumerate(gkf.split(X_train, y_train, groups=groups)):
             X_train_fold, y_train_fold = X_train.iloc[train_idx], y_train.iloc[train_idx]
             X_val_fold, y_val_fold = X_train.iloc[val_idx], y_train.iloc[val_idx]
@@ -228,8 +227,7 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
             y_val_fold_log = np.log(y_val_fold)
             
             model = xgb.XGBRegressor(**param)
-            model.fit(X_train_processed, y_train_fold_log, 
-                      eval_set=[(X_val_processed, y_val_fold_log)], verbose=False)
+            model.fit(X_train_processed, y_train_fold_log)
             
             # Calcula o RMSE no espaço original (após inverter o log com np.exp)
             preds = np.exp(model.predict(X_val_processed))

@@ -256,11 +256,11 @@ def main():
         model_experiment(df_train_clean, df_test, elastic_cluster, experiments, f'Polynomial ElasticNet with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'Polynomial ElasticNet with PSA {cluster_col}'] = elastic_cluster
 
-        rf_cluster = build_random_forest(preprocessor_cluster)
+        rf_cluster = build_random_forest(preprocessor_cluster, **rf_params)
         model_experiment(df_train_clean, df_test, rf_cluster, experiments, f'Random Forest with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'Random Forest with PSA {cluster_col}'] = rf_cluster
         
-        xgb_cluster = build_xgboost(preprocessor_cluster)
+        xgb_cluster = build_xgboost(preprocessor_cluster, **xgb_params)
         model_experiment(df_train_clean, df_test, xgb_cluster, experiments, f'XGBoost with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'XGBoost with PSA {cluster_col}'] = xgb_cluster
         
