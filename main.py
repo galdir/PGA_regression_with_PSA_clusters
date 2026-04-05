@@ -20,12 +20,27 @@ Como executar:
     python main.py
 """
 
+import os
+import random
+import numpy as np
+import tensorflow as tf
+
 import config
 from data_loader import load_pga_data, load_psa_data, get_common_records, get_psa_station_earthquake_ids
 from preprocessing import split_train_test_by_earthquake, create_features, remove_outliers
 from clustering import split_psa_columns, calculate_psa_means, generate_clusters, add_clusters
 
+def set_global_seeds(seed: int):
+    """Define as sementes globais para garantir reprodutibilidade (Determinismo)."""
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
 def main():
+    set_global_seeds(config.RANDOM_STATE)
     print("1. Carregando os dados...")
     df_pga = load_pga_data(config.RAW_EARTHQUAKES_PGA_PATH)
     df_psa = load_psa_data(config.RAW_EARTHQUAKES_PSA_PATH)
@@ -107,13 +122,14 @@ def main():
         'spectral_vert_means': 'clusters_spectral_vert_means'
     }
     
-    print("   -> Gerando e atribuindo clusters (KMeans k=4)...")
+    print("   -> Gerando e atribuindo clusters (KMeans com K dinâmico)...")
     for mean_key, cluster_col in cluster_mapping.items():
-        print(f"      - Processando '{cluster_col}'...")
+        k_val = config.OPTIMAL_K_VALUES.get(mean_key, 4)
+        print(f"      - Processando '{cluster_col}' com K={k_val}...")
         clusters_dict = generate_clusters(
             train_means[mean_key], 
             test_means[mean_key], 
-            k=4, 
+            k=k_val, 
             random_state=config.RANDOM_STATE
         )
         df_train_clean, lost_train = add_clusters(df_train_clean, clusters_dict, cluster_col)

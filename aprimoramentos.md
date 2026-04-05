@@ -2,13 +2,6 @@
 
 Este documento lista oportunidades arquiteturais, estatísticas e de modelagem para aprimorar os resultados (redução de RMSE e aumento de R²) do projeto de previsão de Peak Ground Acceleration (PGA) utilizando clusterização de dados de PSA.
 
-## 1. Transformação da Variável Alvo (Target)
-* **Problema:** A aceleração de pico (PGA) geralmente segue uma distribuição log-normal, variando em várias ordens de grandeza. O treinamento com os valores brutos faz com que os modelos de Machine Learning foquem excessivamente nos valores absolutos extremos e permite previsões de valores negativos (o que é fisicamente impossível).
-* **Solução:** Treinar os modelos para prever o **logaritmo natural do PGA** (`np.log(PGA)`). Equações tradicionais de previsão de movimento do solo (GMPEs) baseiam-se em `ln(PGA)`.
-* **Como implementar:** Usar o `TransformedTargetRegressor` do Scikit-Learn. Ele aplica o logaritmo no treinamento de forma transparente e aplica a exponencial inversa (`np.exp`) na inferência.
-
-
-## 2. Uso de k especifico por tecnica de preprocessamento de clustering
 
 ## 3. busca de hiperparametros usando atributos de clusterização
 

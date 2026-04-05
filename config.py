@@ -27,3 +27,11 @@ CLUSTER_COLUMNS = [
     'clusters_spectral_coefs', 'clusters_spectral_means', 
     'clusters_spectral_horiz_means', 'clusters_spectral_vert_means'
 ]
+
+# Valores otimizados de K (Método do Cotovelo) para cada tipo de espectro
+OPTIMAL_K_VALUES = {
+    'spectral_coefs': 5,
+    'spectral_means': 4,
+    'spectral_horiz_means': 4,
+    'spectral_vert_means': 3
+}

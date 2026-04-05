@@ -67,7 +67,7 @@ def build_elasticnet(preprocessor: ColumnTransformer, alpha: float = 0.1, l1_rat
         ('preprocessor', preprocessor),
         ('poly', PolynomialFeatures(degree=degree, include_bias=include_bias)),
         ('model', TransformedTargetRegressor(
-            regressor=ElasticNet(alpha=alpha, l1_ratio=l1_ratio, max_iter=max_iter),
+            regressor=ElasticNet(alpha=alpha, l1_ratio=l1_ratio, max_iter=max_iter, random_state=42),
             func=np.log,
             inverse_func=np.exp
         ))
@@ -131,7 +131,7 @@ def build_dnn_model(n_hidden_layers: int, n_neurons: int,
     """
     model = Sequential()
     for _ in range(n_hidden_layers):
-        model.add(Dense(n_neurons, activation=activation, kernel_initializer="he_normal"))
+        model.add(Dense(n_neurons, activation=activation, kernel_initializer=tf.keras.initializers.HeNormal(seed=42)))
         model.add(BatchNormalization())
         if dropout_rate > 0.0:
             model.add(Dropout(dropout_rate))
@@ -276,7 +276,7 @@ def tune_dnn(X_train, y_train, X_valid, y_valid, preprocessor: ColumnTransformer
         model.add(tf.keras.layers.Flatten())
 
         for _ in range(n_hidden):
-            model.add(tf.keras.layers.Dense(n_neurons, activation=activation_function, kernel_initializer="he_normal"))
+            model.add(tf.keras.layers.Dense(n_neurons, activation=activation_function, kernel_initializer=tf.keras.initializers.HeNormal(seed=42)))
             model.add(tf.keras.layers.BatchNormalization())
             model.add(tf.keras.layers.Dropout(dropout_rate))
 
