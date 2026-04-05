@@ -1,0 +1,14 @@
+{
+    "best_score_neg_rmse": -44.53563391897391,
+    "best_params": {
+        "n_estimators": 1833,
+        "learning_rate": 0.04003121056616954,
+        "max_depth": 9,
+        "subsample": 0.4218085326930797,
+        "colsample_bytree": 0.8635359905476628,
+        "min_child_weight": 13,
+        "gamma": 0.10619931708737608,
+        "reg_alpha": 1.1016816922157857,
+        "reg_lambda": 4.445265900866296
+    }
+}

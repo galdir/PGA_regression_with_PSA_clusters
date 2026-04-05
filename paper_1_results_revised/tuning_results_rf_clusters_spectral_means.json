@@ -1,0 +1,10 @@
+{
+    "best_score_neg_rmse": -45.773332107596325,
+    "best_params": {
+        "n_estimators": 1274,
+        "max_depth": 12,
+        "min_samples_split": 16,
+        "min_samples_leaf": 6,
+        "max_features": 0.9504347859537111
+    }
+}
