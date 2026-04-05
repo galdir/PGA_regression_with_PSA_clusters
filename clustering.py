@@ -1,12 +1,8 @@
-import warnings
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-
-# Suprimir warnings de divisão por zero nas médias espectrais (comportamento esperado do script original)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 def split_psa_columns(df_psa: pd.DataFrame, train_ids: list, test_ids: list):
     """
@@ -78,8 +74,9 @@ def calculate_psa_means(df_psa_subset: pd.DataFrame):
         ns_mean = np.mean(ns_signals, axis=0) if ns_signals else np.zeros(len(df_psa_subset))
         
         # Coeficientes e médias gerais
-        ew_v_spectral_coeficients = ew_mean / v_mean
-        ns_v_spectral_coeficients = ns_mean / v_mean
+        epsilon = 1e-9
+        ew_v_spectral_coeficients = ew_mean / (v_mean + epsilon)
+        ns_v_spectral_coeficients = ns_mean / (v_mean + epsilon)
         
         spectral_coefs_mean = np.mean(np.array([ew_v_spectral_coeficients, ns_v_spectral_coeficients]), axis=0)
         spectral_means = np.mean(np.array([v_mean, ew_mean, ns_mean]), axis=0)
@@ -103,9 +100,12 @@ def find_optimal_k(df_train_mean: pd.DataFrame, min_k: int = 2, max_k: int = 8, 
     Escalona os dados de treino, avalia os clusters usando a métrica Silhouette Score 
     (para valores entre min_k e max_k) e retorna o K que obteve a pontuação mais alta.
     """
+    # Transpor para que as amostras sejam as linhas (estações) e colunas sejam as features (períodos)
+    df_train_t = df_train_mean.T
+    
     scaler = MinMaxScaler()
-    X_train_scaled = scaler.fit_transform(df_train_mean)
-    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_mean.index, columns=df_train_mean.columns).T
+    X_train_scaled = scaler.fit_transform(df_train_t)
+    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_t.index, columns=df_train_t.columns)
     
     best_k = 2
     best_score = -1
@@ -126,19 +126,22 @@ def generate_clusters(df_train_mean: pd.DataFrame, df_test_mean: pd.DataFrame, k
     Aplica o dimensionamento (MinMaxScaler) e a clusterização (KMeans) replicando
     a lógica exata do script original. Retorna um dicionário unificado mapeando station_key -> cluster_id.
     """
+    # Transpor para que as amostras sejam as linhas (estações) e colunas sejam as features (períodos)
+    df_train_t = df_train_mean.T
+    df_test_t = df_test_mean.T
+    
     # --- Treino ---
     scaler = MinMaxScaler()
-    X_train_scaled = scaler.fit_transform(df_train_mean)
-    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_mean.index, columns=df_train_mean.columns).T
+    X_train_scaled = scaler.fit_transform(df_train_t)
+    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_t.index, columns=df_train_t.columns)
     
     kmeans = KMeans(n_clusters=k, random_state=random_state, n_init=10)
     df_train_scaled_t['Cluster'] = kmeans.fit_predict(df_train_scaled_t)
     
     # --- Teste ---
-    # Mantendo fit_transform no teste para ser idêntico aos cálculos originais
-    scaler_teste = MinMaxScaler()
-    X_test_scaled = scaler_teste.fit_transform(df_test_mean)
-    df_test_scaled_t = pd.DataFrame(X_test_scaled, index=df_test_mean.index, columns=df_test_mean.columns).T
+    # Aplicar apenas o transform() no conjunto de teste para evitar vazamento de dados (Data Leakage)
+    X_test_scaled = scaler.transform(df_test_t)
+    df_test_scaled_t = pd.DataFrame(X_test_scaled, index=df_test_t.index, columns=df_test_t.columns)
     
     df_test_scaled_t['Cluster'] = kmeans.predict(df_test_scaled_t)
     
