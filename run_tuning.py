@@ -18,6 +18,9 @@ Via linha de comando, passe o modelo desejado e (opcionalmente) o número de ten
     # Otimizar Rede Neural (DNN) permitindo até 30 épocas de busca
     python run_tuning.py --model dnn --trials 30
 
+    # Otimizar XGBoost usando uma feature específica de cluster
+    python run_tuning.py --model xgb --cluster clusters_spectral_means
+
 Argumentos:
 -----------
 --model  : (Obrigatório) 'rf' (Random Forest), 'xgb' (XGBoost) ou 'dnn' (Deep Neural Network).
@@ -33,9 +36,10 @@ from sklearn.model_selection import GroupShuffleSplit
 import config
 from data_loader import load_pga_data, load_psa_data, get_common_records
 from preprocessing import split_train_test_by_earthquake, create_features, remove_outliers
+from clustering import split_psa_columns, calculate_psa_means, generate_clusters, add_clusters
 from modeling import get_preprocessor, tune_random_forest, tune_xgboost, tune_dnn
 
-def prepare_data():
+def prepare_data(cluster_col=None):
     """
     Executa o pipeline de dados inicial necessário para obter os conjuntos 
     de treino limpos para a etapa de tuning.
@@ -59,6 +63,34 @@ def prepare_data():
         n_neighbors=200
     )
     
+    if cluster_col and cluster_col != 'none':
+        print(f"Processando e adicionando a feature de cluster: {cluster_col}...")
+        train_ids = df_train['earthquake_id'].unique()
+        test_ids = df_test['earthquake_id'].unique()
+        
+        df_psa_train, df_psa_test = split_psa_columns(df_psa, train_ids, test_ids)
+        
+        train_means = calculate_psa_means(df_psa_train)
+        test_means = calculate_psa_means(df_psa_test)
+        
+        cluster_mapping = {
+            'clusters_spectral_coefs': 'spectral_coefs',
+            'clusters_spectral_means': 'spectral_means',
+            'clusters_spectral_horiz_means': 'spectral_horiz_means',
+            'clusters_spectral_vert_means': 'spectral_vert_means'
+        }
+        mean_key = cluster_mapping[cluster_col]
+        k_val = config.OPTIMAL_K_VALUES.get(mean_key, 4)
+        
+        clusters_dict = generate_clusters(
+            train_means[mean_key], test_means[mean_key], k=k_val, random_state=config.RANDOM_STATE
+        )
+        df_train_clean, lost_train = add_clusters(df_train_clean, clusters_dict, cluster_col)
+        df_test, _ = add_clusters(df_test, clusters_dict, cluster_col)
+        
+        if lost_train:
+            df_train_clean = df_train_clean.dropna(subset=[cluster_col])
+            
     return df_train_clean, df_test
 
 def main():
@@ -67,22 +99,29 @@ def main():
                         help="Modelo para otimizar: 'rf' (Random Forest), 'xgb' (XGBoost) ou 'dnn' (Deep Neural Network)")
     parser.add_argument('--trials', type=int, default=None, 
                         help="Número de iterações/épocas máximas para a busca (Padrão: 300 para RF/XGB, 50 para DNN)")
+    parser.add_argument('--cluster', type=str, default='none', choices=['none'] + config.CLUSTER_COLUMNS,
+                        help="Atributo de cluster para otimizar (padrão: 'none' para modelo base)")
     args = parser.parse_args()
 
     # 1. Preparação dos Dados
-    df_train, _ = prepare_data()
+    df_train, _ = prepare_data(cluster_col=args.cluster)
     
     X_train = df_train.drop(columns=['peak_ground_acceleration'])
     y_train = df_train['peak_ground_acceleration']
     groups = df_train['earthquake_id']
 
-    preprocessor = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES)
+    if args.cluster != 'none':
+        preprocessor = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES, cat_attributes=[args.cluster])
+        output_suffix = f"_{args.model}_{args.cluster}"
+    else:
+        preprocessor = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES)
+        output_suffix = f"_{args.model}"
     
     # 2. Configuração de Saída
     os.makedirs(config.RESULTS_DIR, exist_ok=True)
-    results_file = os.path.join(config.RESULTS_DIR, f"tuning_results_{args.model}.json")
+    results_file = os.path.join(config.RESULTS_DIR, f"tuning_results{output_suffix}.json")
 
-    print(f"\nIniciando busca de hiperparâmetros para: {args.model.upper()}")
+    print(f"\nIniciando busca de hiperparâmetros para: {args.model.upper()} (Cluster: {args.cluster})")
     
     # 3. Execução da Busca por Modelo
     if args.model == 'rf':
@@ -116,7 +155,8 @@ def main():
         y_train_dnn = y_train.iloc[train_idx]
         y_valid_dnn = y_train.iloc[valid_idx]
         
-        tuner = tune_dnn(X_train_dnn, y_train_dnn, X_valid_dnn, y_valid_dnn, preprocessor, max_epochs=trials)
+        tuner = tune_dnn(X_train_dnn, y_train_dnn, X_valid_dnn, y_valid_dnn, preprocessor, 
+                         max_epochs=trials, project_name=f'keras_tuner{output_suffix}')
         
         best_trial = tuner.oracle.get_best_trials(num_trials=1)[0]
         results = {
