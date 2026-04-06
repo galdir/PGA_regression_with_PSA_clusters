@@ -1,0 +1,16 @@
+{
+    "best_score_val_rmse": 0.8558710217475891,
+    "best_params": {
+        "n_hidden": 1,
+        "n_neurons": 1266,
+        "learning_rate": 0.001963607784407455,
+        "optimizer": "adam",
+        "activation": "swish",
+        "dropout_rate": 0.2,
+        "tuner/epochs": 34,
+        "tuner/initial_epoch": 12,
+        "tuner/bracket": 2,
+        "tuner/round": 1,
+        "tuner/trial_id": "0215"
+    }
+}
