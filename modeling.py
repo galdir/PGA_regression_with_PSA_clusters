@@ -119,10 +119,11 @@ def build_random_forest(preprocessor: ColumnTransformer, n_estimators: int,
     ])
 
 def build_xgboost(preprocessor: ColumnTransformer, n_estimators: int, 
-                  learning_rate: float, max_depth: int, 
-                  subsample: float, colsample_bytree: float, 
-                  min_child_weight: int, gamma: float, 
-                  reg_alpha: float, reg_lambda: float) -> Pipeline:
+                  learning_rate: float = 0.05, max_depth: int = 6, 
+                  subsample: float = 0.8, colsample_bytree: float = 0.8, 
+                  min_child_weight: int = 1, gamma: float = 0.0, 
+                  reg_alpha: float = 1.0, reg_lambda: float = 1.0,
+                  **kwargs) -> Pipeline:
     """Constrói a pipeline para XGBoost usando os melhores hiperparâmetros originais."""
     return Pipeline([
         ('preprocessor', preprocessor),
@@ -180,7 +181,7 @@ def tune_random_forest(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Ser
     def objective(trial):
         param = {
             'n_estimators': trial.suggest_int('n_estimators', 100, 2000),
-            'max_depth': trial.suggest_int('max_depth', 3, 30),
+            'max_depth': trial.suggest_int('max_depth', 3, 50),
             'min_samples_split': trial.suggest_int('min_samples_split', 2, 20),
             'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 20),
             'max_features': trial.suggest_float('max_features', 0.1, 1.0),
@@ -220,21 +221,23 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
     def objective(trial):
         param = {
             'objective': 'reg:squarederror',
-            'n_estimators': trial.suggest_int('n_estimators', 100, 2100),
-            'learning_rate': trial.suggest_float('learning_rate',  1e-4, 0.05, log=True), # Amarrado para evitar overfit com muitas árvores
-            'max_depth': trial.suggest_int('max_depth', 2, 10), # Árvores rasas extrapolam de forma menos agressiva
-            'subsample': trial.suggest_float('subsample', 0.1, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
+            'n_estimators': 2000, # Fixado em um valor alto; o early_stopping decide a parada
+            'learning_rate': trial.suggest_float('learning_rate',  1e-3, 0.3, log=True), # Força um aprendizado mais lento (mais árvores)
+            'max_depth': trial.suggest_int('max_depth', 3, 15), # Limita a profundidade para evitar overfit nas folhas
+            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
             'min_child_weight': trial.suggest_int('min_child_weight', 0, 25),
-            'gamma': trial.suggest_float('gamma', 0.1, 5.0, log=True), # Força divisões mais significativas
-            'reg_alpha': trial.suggest_float('reg_alpha', 1.0, 1e2, log=True), # Regularização L1 mais severa (piso em 1.0)
-            'reg_lambda': trial.suggest_float('reg_lambda', 1.0, 1e2, log=True), # Regularização L2 mais severa (piso em 1.0)
+            'gamma': trial.suggest_float('gamma', 1e-8, 1.0, log=True),
+            'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+            'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+            'early_stopping_rounds': 50,
             'random_state': random_state,
             'n_jobs': -1,
         }
 
         gkf = GroupKFold(n_splits=5)
         rmses = []
+        best_iterations = []
         
         # Loop manual para avaliar o erro no espaço exponencial e usar Pruning (Optuna)
         for step, (train_idx, val_idx) in enumerate(gkf.split(X_train, y_train, groups=groups)):
@@ -250,17 +253,29 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
             y_val_fold_log = np.log(y_val_fold)
             
             model = xgb.XGBRegressor(**param)
-            model.fit(X_train_processed, y_train_fold_log)
+            
+            # Treinamento com Early Stopping (Validação acompanhando cada fold)
+            model.fit(
+                X_train_processed, y_train_fold_log,
+                eval_set=[(X_val_processed, y_val_fold_log)],
+                verbose=False
+            )
             
             # Calcula o RMSE no espaço original (após inverter o log com np.exp)
             preds = np.exp(model.predict(X_val_processed))
             rmses.append(root_mean_squared_error(y_val_fold, preds))
+            best_iterations.append(model.best_iteration)
             
             # Reporta a média atual para o Optuna; aborta a Trial se for ruim demais
             trial.report(-np.mean(rmses), step=step)
             if trial.should_prune():
                 raise optuna.TrialPruned()
                 
+        # Registra a média do melhor número de árvores dessa trial.
+        # Adicionamos 10% a mais (multiplicando por 1.1) porque no main.py 
+        # o modelo final vai treinar com 100% dos dados (e não apenas os 80% do fold).
+        # Logo, ele precisa de ligeiramente mais árvores para convergir.
+        trial.set_user_attr("optimal_trees", int(np.mean(best_iterations) * 1.1))
         return -np.mean(rmses)
 
     # Adiciona Sampler determinístico e Pruner (ignora as primeiras 5 trials do estudo antes de começar a podar)
@@ -270,7 +285,15 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
     study = optuna.create_study(direction='maximize', sampler=sampler, pruner=pruner)
     study.optimize(objective, n_trials=n_trials)
     
-    return study
+    # Envolvemos o Study para sobrescrever e injetar o n_estimators dinâmico ótimo
+    # Assim o run_tuning.py salva o arquivo JSON corretamente sem precisar ser modificado.
+    class StudyWrapper:
+        def __init__(self, study):
+            self.best_value = study.best_value
+            self.best_params = study.best_params.copy()
+            self.best_params['n_estimators'] = study.best_trial.user_attrs.get("optimal_trees", 500)
+            
+    return StudyWrapper(study)
 
 
 def tune_dnn(X_train, y_train, X_valid, y_valid, preprocessor: ColumnTransformer, 
