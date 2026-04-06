@@ -48,11 +48,23 @@ def build_linear_regression(preprocessor: ColumnTransformer) -> Pipeline:
         ))
     ])
 
-def build_polynomial_regression(preprocessor: ColumnTransformer, degree: int = 2, include_bias: bool = True) -> Pipeline:
+def build_polynomial_regression(preprocessor: ColumnTransformer, degree: int = 2, include_bias: bool = False) -> Pipeline:
     """Constrói a pipeline para Regressão Polinomial."""
+    new_transformers = []
+    for name, transformer, columns in preprocessor.transformers:
+        if name == 'num':
+            # Copia o pipeline numérico para adicionar as features polinomiais e re-escalonar (corrige Problema 1 e 2)
+            new_steps = transformer.steps.copy()
+            new_steps.append(('poly', PolynomialFeatures(degree=degree, include_bias=include_bias)))
+            new_steps.append(('scale_poly', StandardScaler()))
+            new_transformers.append((name, Pipeline(new_steps), columns))
+        else:
+            new_transformers.append((name, transformer, columns))
+            
+    prep_poly = ColumnTransformer(new_transformers, remainder=preprocessor.remainder)
+
     return Pipeline([
-        ('preprocessor', preprocessor),
-        ('poly', PolynomialFeatures(degree=degree, include_bias=include_bias)),
+        ('preprocessor', prep_poly),
         ('model', TransformedTargetRegressor(
             regressor=LinearRegression(),
             func=np.log,
@@ -61,11 +73,22 @@ def build_polynomial_regression(preprocessor: ColumnTransformer, degree: int = 2
     ])
 
 def build_elasticnet(preprocessor: ColumnTransformer, alpha: float = 0.1, l1_ratio: float = 0.5, 
-                     max_iter: int = 100000, degree: int = 2, include_bias: bool = True) -> Pipeline:
+                     max_iter: int = 100000, degree: int = 2, include_bias: bool = False) -> Pipeline:
     """Constrói a pipeline para Regressão Polinomial com regularização ElasticNet."""
+    new_transformers = []
+    for name, transformer, columns in preprocessor.transformers:
+        if name == 'num':
+            new_steps = transformer.steps.copy()
+            new_steps.append(('poly', PolynomialFeatures(degree=degree, include_bias=include_bias)))
+            new_steps.append(('scale_poly', StandardScaler()))
+            new_transformers.append((name, Pipeline(new_steps), columns))
+        else:
+            new_transformers.append((name, transformer, columns))
+            
+    prep_poly = ColumnTransformer(new_transformers, remainder=preprocessor.remainder)
+
     return Pipeline([
-        ('preprocessor', preprocessor),
-        ('poly', PolynomialFeatures(degree=degree, include_bias=include_bias)),
+        ('preprocessor', prep_poly),
         ('model', TransformedTargetRegressor(
             regressor=ElasticNet(alpha=alpha, l1_ratio=l1_ratio, max_iter=max_iter, random_state=42),
             func=np.log,

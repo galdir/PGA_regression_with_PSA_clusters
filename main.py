@@ -147,7 +147,7 @@ def main():
     from evaluation import model_experiment, save_pipelines, save_experiments_results
     import os
     import json
-    from sklearn.model_selection import train_test_split
+    from sklearn.model_selection import GroupShuffleSplit
     from tensorflow.keras.callbacks import EarlyStopping
     from sklearn.metrics import root_mean_squared_error, r2_score
     from scipy import stats
@@ -168,9 +168,13 @@ def main():
     def train_evaluate_dnn(df_train, df_test, preprocessor, model_name, dnn_params):
         print(f"Executando experimento: {model_name}...")
         
-        X_train_dnn, X_valid_dnn, y_train_dnn, y_valid_dnn = train_test_split(
-            df_train, df_train['peak_ground_acceleration'], test_size=0.2, random_state=config.RANDOM_STATE
-        )
+        gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=config.RANDOM_STATE)
+        train_idx, valid_idx = next(gss.split(df_train, df_train['peak_ground_acceleration'], groups=df_train['earthquake_id']))
+        
+        X_train_dnn = df_train.iloc[train_idx]
+        X_valid_dnn = df_train.iloc[valid_idx]
+        y_train_dnn = df_train['peak_ground_acceleration'].iloc[train_idx]
+        y_valid_dnn = df_train['peak_ground_acceleration'].iloc[valid_idx]
         
         tf_x_train = preprocessor.fit_transform(X_train_dnn)
         tf_x_valid = preprocessor.transform(X_valid_dnn)
@@ -260,6 +264,19 @@ def main():
         print(f"      - Cluster: {cluster_col}")
         preprocessor_cluster = get_preprocessor(num_attributes=config.MODEL_NUM_FEATURES, cat_attributes=[cluster_col])
         
+        if config.USE_CLUSTER_SPECIFIC_TUNING:
+            rf_params_cluster = get_tuned_params(f"rf_{cluster_col}")
+            xgb_params_cluster = get_tuned_params(f"xgb_{cluster_col}")
+            dnn_params_cluster = get_tuned_params(f"dnn_{cluster_col}")
+            
+            if not rf_params_cluster: rf_params_cluster = rf_params
+            if not xgb_params_cluster: xgb_params_cluster = xgb_params
+            if not dnn_params_cluster: dnn_params_cluster = dnn_params
+        else:
+            rf_params_cluster = rf_params
+            xgb_params_cluster = xgb_params
+            dnn_params_cluster = dnn_params
+
         lr_cluster = build_linear_regression(preprocessor_cluster)
         model_experiment(df_train_clean, df_test, lr_cluster, experiments, f'Linear Regression with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'Linear Regression with PSA {cluster_col}'] = lr_cluster
@@ -272,16 +289,16 @@ def main():
         model_experiment(df_train_clean, df_test, elastic_cluster, experiments, f'Polynomial ElasticNet with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'Polynomial ElasticNet with PSA {cluster_col}'] = elastic_cluster
 
-        rf_cluster = build_random_forest(preprocessor_cluster, **rf_params)
+        rf_cluster = build_random_forest(preprocessor_cluster, **rf_params_cluster)
         model_experiment(df_train_clean, df_test, rf_cluster, experiments, f'Random Forest with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'Random Forest with PSA {cluster_col}'] = rf_cluster
         
-        xgb_cluster = build_xgboost(preprocessor_cluster, **xgb_params)
+        xgb_cluster = build_xgboost(preprocessor_cluster, **xgb_params_cluster)
         model_experiment(df_train_clean, df_test, xgb_cluster, experiments, f'XGBoost with PSA {cluster_col}', target_col='peak_ground_acceleration')
         trained_pipelines[f'XGBoost with PSA {cluster_col}'] = xgb_cluster
         
         # Deep Neural Network
-        train_evaluate_dnn(df_train_clean, df_test, preprocessor_cluster, f'Deep Neural Network with PSA {cluster_col}', dnn_params)
+        train_evaluate_dnn(df_train_clean, df_test, preprocessor_cluster, f'Deep Neural Network with PSA {cluster_col}', dnn_params_cluster)
 
     print("\n8. Salvando Resultados e Pipelines...")
     save_experiments_results(experiments, os.path.join(config.RESULTS_DIR, 'experiments_results.csv'))

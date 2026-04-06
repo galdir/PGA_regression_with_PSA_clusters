@@ -5,7 +5,7 @@ RAW_EARTHQUAKES_PSA_PATH = 'earthquakes_psa_earthquakeid.csv'
 # Flags de controle de execução
 LOAD_TRAINED_MODELS = False
 HIPERPARAMETERS_TUNING = False
-USE_CLUSTER_SPECIFIC_TUNING = False
+USE_CLUSTER_SPECIFIC_TUNING = True
 
 # Configurações gerais
 RANDOM_STATE = 42
