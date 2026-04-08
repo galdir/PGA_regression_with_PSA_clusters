@@ -2,3 +2,5 @@
 This is the source code for the paper: "Refining PGA Prediction Models through Pseudo-Spectral Acceleration Clustering: A Machine Learning Approach"
 
 pip install -r requirements.txt
+
+python -m pipreqs.pipreqs ./ --force
