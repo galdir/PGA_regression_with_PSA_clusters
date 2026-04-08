@@ -1,14 +1,14 @@
 {
-    "best_score_neg_rmse": -44.091946543419574,
+    "best_score_neg_rmse": -44.43370915419315,
     "best_params": {
-        "learning_rate": 0.20973450079305628,
+        "learning_rate": 0.13639420107900652,
         "max_depth": 3,
-        "subsample": 0.8511805739475716,
-        "colsample_bytree": 0.5870418516009726,
-        "min_child_weight": 18,
-        "gamma": 0.015604709017540328,
-        "reg_alpha": 0.7490326883786858,
-        "reg_lambda": 0.14654050324352141,
-        "n_estimators": 55
+        "subsample": 0.2763834835617142,
+        "colsample_bytree": 0.8431641569104364,
+        "min_child_weight": 10,
+        "gamma": 9.950876495166522e-08,
+        "reg_alpha": 0.11993643080106633,
+        "reg_lambda": 0.024519359983396802,
+        "n_estimators": 71
     }
 }
