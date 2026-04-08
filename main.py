@@ -39,6 +39,9 @@ def set_global_seeds(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
+    # Força determinismo absoluto nas operações em C++ do Keras e TensorFlow
+    tf.keras.utils.set_random_seed(seed)
+    tf.config.experimental.enable_op_determinism()
 
 def main():
     set_global_seeds(config.RANDOM_STATE)
@@ -136,7 +139,9 @@ def main():
         df_train_clean, lost_train = add_clusters(df_train_clean, clusters_dict, cluster_col)
         df_test, lost_test = add_clusters(df_test, clusters_dict, cluster_col)
         if lost_train or lost_test:
-            print(f"        * Aviso: {len(lost_train)} estações sem cluster no treino e {len(lost_test)} no teste.")
+            print(f"        * Aviso: {len(lost_train)} estações órfãs (sem cluster) no treino e {len(lost_test)} no teste.")
+            if lost_train: print(f"          - Órfãs no Treino: {lost_train}")
+            if lost_test: print(f"          - Órfãs no Teste: {lost_test}")
         
     print("   -> Clusterização concluída. Datasets de treino e teste agora possuem as features de cluster.")
 

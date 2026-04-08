@@ -87,8 +87,13 @@ def prepare_data(cluster_col=None):
             train_means[mean_key], test_means[mean_key], k=k_val, random_state=config.RANDOM_STATE
         )
         df_train_clean, lost_train = add_clusters(df_train_clean, clusters_dict, cluster_col)
-        df_test, _ = add_clusters(df_test, clusters_dict, cluster_col)
+        df_test, lost_test = add_clusters(df_test, clusters_dict, cluster_col)
         
+        if lost_train or lost_test:
+            print(f"Aviso: {len(lost_train)} estações órfãs (sem cluster) no treino e {len(lost_test)} no teste para {cluster_col}.")
+            if lost_train: print(f"  - Órfãs no Treino (serão removidas): {lost_train}")
+            if lost_test: print(f"  - Órfãs no Teste: {lost_test}")
+
         if lost_train:
             df_train_clean = df_train_clean.dropna(subset=[cluster_col])
             

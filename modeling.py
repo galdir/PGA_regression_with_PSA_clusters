@@ -275,7 +275,7 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
         # Adicionamos 10% a mais (multiplicando por 1.1) porque no main.py 
         # o modelo final vai treinar com 100% dos dados (e não apenas os 80% do fold).
         # Logo, ele precisa de ligeiramente mais árvores para convergir.
-        trial.set_user_attr("optimal_trees", int(np.mean(best_iterations) * 1.1))
+        # trial.set_user_attr("optimal_trees", int(np.mean(best_iterations) * 1.1))
         return -np.mean(rmses)
 
     # Adiciona Sampler determinístico e Pruner (ignora as primeiras 5 trials do estudo antes de começar a podar)

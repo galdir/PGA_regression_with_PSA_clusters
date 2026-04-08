@@ -40,7 +40,7 @@ def calculate_psa_means(df_psa_subset: pd.DataFrame):
         station = column.split('-')[0]
         stations.add(station)
 
-    stations_list = list(stations)
+    stations_list = sorted(list(stations))
     
     df_spectral_coefs_mean = pd.DataFrame(columns=stations_list)
     df_spectral_mean = pd.DataFrame(columns=stations_list)
@@ -100,12 +100,14 @@ def find_optimal_k(df_train_mean: pd.DataFrame, min_k: int = 2, max_k: int = 8, 
     Escalona os dados de treino, avalia os clusters usando a métrica Silhouette Score 
     (para valores entre min_k e max_k) e retorna o K que obteve a pontuação mais alta.
     """
-    # Transpor para que as amostras sejam as linhas (estações) e colunas sejam as features (períodos)
-    df_train_t = df_train_mean.T
-    
+    # O MinMaxScaler atua nas colunas. Aplicamos ANTES de transpor para garantir que 
+    # o espectro de cada estação seja normalizado (0 a 1) individualmente, capturando a 'forma' do sinal.
     scaler = MinMaxScaler()
-    X_train_scaled = scaler.fit_transform(df_train_t)
-    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_t.index, columns=df_train_t.columns)
+    X_train_scaled = scaler.fit_transform(df_train_mean)
+    df_train_scaled = pd.DataFrame(X_train_scaled, index=df_train_mean.index, columns=df_train_mean.columns)
+    
+    # Agora transpomos para o formato exigido pelo Scikit-Learn (amostras x features)
+    df_train_scaled_t = df_train_scaled.T
     
     best_k = 2
     best_score = -1
@@ -126,22 +128,26 @@ def generate_clusters(df_train_mean: pd.DataFrame, df_test_mean: pd.DataFrame, k
     Aplica o dimensionamento (MinMaxScaler) e a clusterização (KMeans) replicando
     a lógica exata do script original. Retorna um dicionário unificado mapeando station_key -> cluster_id.
     """
-    # Transpor para que as amostras sejam as linhas (estações) e colunas sejam as features (períodos)
-    df_train_t = df_train_mean.T
-    df_test_t = df_test_mean.T
-    
     # --- Treino ---
+    # Normaliza o espectro de cada estação isoladamente para isolar o "shape" (forma)
     scaler = MinMaxScaler()
-    X_train_scaled = scaler.fit_transform(df_train_t)
-    df_train_scaled_t = pd.DataFrame(X_train_scaled, index=df_train_t.index, columns=df_train_t.columns)
+    X_train_scaled = scaler.fit_transform(df_train_mean)
+    df_train_scaled = pd.DataFrame(X_train_scaled, index=df_train_mean.index, columns=df_train_mean.columns)
+    
+    df_train_scaled_t = df_train_scaled.T
     
     kmeans = KMeans(n_clusters=k, random_state=random_state, n_init=10)
     df_train_scaled_t['Cluster'] = kmeans.fit_predict(df_train_scaled_t)
     
     # --- Teste ---
-    # Aplicar apenas o transform() no conjunto de teste para evitar vazamento de dados (Data Leakage)
-    X_test_scaled = scaler.transform(df_test_t)
-    df_test_scaled_t = pd.DataFrame(X_test_scaled, index=df_test_t.index, columns=df_test_t.columns)
+    # Como as estações de teste são diferentes do treino, precisamos instanciar um novo scaler.
+    # Isso garante que cada nova estação seja escalada pelo seu próprio Max/Min espectral.
+    # Como não usamos estatísticas de outras amostras/estações, isso não causa vazamento de dados (leakage).
+    scaler_test = MinMaxScaler()
+    X_test_scaled = scaler_test.fit_transform(df_test_mean)
+    df_test_scaled = pd.DataFrame(X_test_scaled, index=df_test_mean.index, columns=df_test_mean.columns)
+    
+    df_test_scaled_t = df_test_scaled.T
     
     df_test_scaled_t['Cluster'] = kmeans.predict(df_test_scaled_t)
     

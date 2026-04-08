@@ -4,3 +4,10 @@ This is the source code for the paper: "Refining PGA Prediction Models through P
 pip install -r requirements.txt
 
 python -m pipreqs.pipreqs ./ --force
+
+
+python run_cluster_analysis.py
+
+python run_tuning.py --model rf --cluster clusters_spectral_coefs
+
+python .\main.py
