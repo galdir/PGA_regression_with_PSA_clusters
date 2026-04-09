@@ -222,10 +222,10 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
         param = {
             'objective': 'reg:squarederror',
             'n_estimators': 2000, # Fixado em um valor alto; o early_stopping decide a parada
-            'learning_rate': trial.suggest_float('learning_rate',  1e-3, 0.3, log=True), # Força um aprendizado mais lento (mais árvores)
+            'learning_rate': trial.suggest_float('learning_rate',  1e-3, 0.1, log=True), # Força um aprendizado mais lento (mais árvores)
             'max_depth': trial.suggest_int('max_depth', 3, 15), # Limita a profundidade para evitar overfit nas folhas
-            'subsample': trial.suggest_float('subsample', 0.2, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.2, 1.0),
+            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
             'min_child_weight': trial.suggest_int('min_child_weight', 0, 25),
             'gamma': trial.suggest_float('gamma', 1e-8, 1.0, log=True),
             'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
@@ -280,7 +280,7 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
 
     # Adiciona Sampler determinístico e Pruner (ignora as primeiras 5 trials do estudo antes de começar a podar)
     sampler = optuna.samplers.TPESampler(seed=random_state)
-    pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
     
     study = optuna.create_study(direction='maximize', sampler=sampler, pruner=pruner)
     study.optimize(objective, n_trials=n_trials)
