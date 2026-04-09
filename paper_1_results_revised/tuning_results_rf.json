@@ -1,10 +1,10 @@
 {
-    "best_score_neg_rmse": -46.06034233677369,
+    "best_score_neg_rmse": -46.11365155616538,
     "best_params": {
-        "n_estimators": 180,
-        "max_depth": 43,
-        "min_samples_split": 14,
+        "n_estimators": 284,
+        "max_depth": 48,
+        "min_samples_split": 7,
         "min_samples_leaf": 5,
-        "max_features": 0.8617865557868577
+        "max_features": 0.9981745853184145
     }
 }
