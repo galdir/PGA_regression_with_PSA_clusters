@@ -9,6 +9,6 @@
         "gamma": 0.07749706463056487,
         "reg_alpha": 0.0654524251985384,
         "reg_lambda": 0.02959702914859101,
-        "n_estimators": 113
+        "n_estimators": 103
     }
 }
