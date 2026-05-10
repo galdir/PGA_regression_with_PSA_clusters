@@ -148,10 +148,10 @@ def build_xgboost(preprocessor: ColumnTransformer, n_estimators: int,
 
 def build_dnn_model(n_hidden_layers: int, n_neurons: int, 
                     activation: str, learning_rate: float,
-                    dropout_rate: float) -> Sequential:
+                    dropout_rate: float, optimizer: str = "adam") -> Sequential:
     """
     Constrói e compila o modelo Keras (Deep Neural Network) 
-    usando os melhores hiperparâmetros encontrados pelo Keras Tuner.
+    usando os melhores hiperparâmetros encontrados pelo Optuna.
     """
     model = Sequential()
     for _ in range(n_hidden_layers):
@@ -162,9 +162,17 @@ def build_dnn_model(n_hidden_layers: int, n_neurons: int,
     model.add(Dense(1))
 
     rmse_metric = tf.keras.metrics.RootMeanSquaredError(name='rmse')
-    nn_optimizer = keras.optimizers.SGD(learning_rate=learning_rate, nesterov=True, momentum=0.9)
     
-    model.compile(loss="huber", optimizer=nn_optimizer, metrics=[rmse_metric])
+    if optimizer == "sgd":
+        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, clipnorm=1.0)
+    elif optimizer == "nesterov":
+        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, nesterov=True, momentum=0.9, clipnorm=1.0)
+    elif optimizer == "adamw":
+        opt = tf.keras.optimizers.AdamW(learning_rate=learning_rate, clipnorm=1.0)
+    else:
+        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=1.0)
+        
+    model.compile(loss="mean_squared_error", optimizer=opt, metrics=[rmse_metric])
     return model
 
 
@@ -297,62 +305,68 @@ def tune_xgboost(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
     return StudyWrapper(study)
 
 
-def tune_dnn(X_train, y_train, X_valid, y_valid, preprocessor: ColumnTransformer, 
-             max_epochs: int = 50, project_name: str = 'keras_tuner'):
+def tune_dnn(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series, 
+             preprocessor: ColumnTransformer, n_trials: int = 100, random_state: int = 42):
     """
-    Executa a busca de hiperparâmetros para a Deep Neural Network usando Keras Tuner.
+    Executa a busca de hiperparâmetros para a Deep Neural Network usando Optuna e GroupKFold.
     """
-    def build_model(hp):
-        n_hidden = hp.Int("n_hidden", min_value=1, max_value=11, default=2)
-        n_neurons = hp.Int("n_neurons", min_value=10, max_value=1800)
-        learning_rate = hp.Float("learning_rate", min_value=1e-4, max_value=1e-2, sampling="log")
-        optimizer_choice = hp.Choice("optimizer", values=["adam", "nesterov", "adamw", "sgd"])
-        activation_function = hp.Choice("activation", values=["relu", "swish"])
-        dropout_rate = hp.Float("dropout_rate", min_value=0.0, max_value=0.5, step=0.1)
+    def objective(trial):
+        n_hidden_layers = trial.suggest_int("n_hidden_layers", 1, 3)
+        n_neurons = trial.suggest_int("n_neurons", 16, 512, log=True)
+        learning_rate = trial.suggest_float("learning_rate", 1e-4, 5e-2, log=True)
+        optimizer = trial.suggest_categorical("optimizer", ["adam", "nesterov", "sgd"])
+        activation = trial.suggest_categorical("activation", ["relu", "swish"])
+        dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5, step=0.1)
 
-        if optimizer_choice == "sgd":
-            optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate)
-        elif optimizer_choice == "nesterov":
-            optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate, nesterov=True, momentum=0.9)
-        elif optimizer_choice == "adamw":
-            optimizer = tf.keras.optimizers.AdamW(learning_rate=learning_rate)
-        else:
-            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        gkf = GroupKFold(n_splits=5)
+        rmses = []
+        best_epochs = []
 
-        model = tf.keras.Sequential()
-        model.add(tf.keras.layers.Flatten())
+        for step, (train_idx, val_idx) in enumerate(gkf.split(X_train, y_train, groups=groups)):
+            X_train_fold, y_train_fold = X_train.iloc[train_idx], y_train.iloc[train_idx]
+            X_val_fold, y_val_fold = X_train.iloc[val_idx], y_train.iloc[val_idx]
 
-        for _ in range(n_hidden):
-            model.add(tf.keras.layers.Dense(n_neurons, activation=activation_function, kernel_initializer=tf.keras.initializers.HeNormal(seed=42)))
-            model.add(tf.keras.layers.BatchNormalization())
-            model.add(tf.keras.layers.Dropout(dropout_rate))
+            X_train_processed = preprocessor.fit_transform(X_train_fold)
+            X_val_processed = preprocessor.transform(X_val_fold)
 
-        model.add(tf.keras.layers.Dense(1))
-        model.compile(loss="huber", optimizer=optimizer, metrics=["root_mean_squared_error"])
-        return model
+            y_train_log = np.log(y_train_fold)
+            y_val_log = np.log(y_val_fold)
 
-    tf_x_train = preprocessor.fit_transform(X_train)
-    tf_x_valid = preprocessor.transform(X_valid)
-    
-    y_train_log = np.log(y_train)
-    y_valid_log = np.log(y_valid)
+            model = build_dnn_model(n_hidden_layers, n_neurons, activation, learning_rate, dropout_rate, optimizer)
+            es = tf.keras.callbacks.EarlyStopping(monitor='val_rmse', mode='min', patience=15, restore_best_weights=True)
+            
+            history = model.fit(
+                X_train_processed, y_train_log,
+                validation_data=(X_val_processed, y_val_log),
+                epochs=150, batch_size=32, callbacks=[es], verbose=0
+            )
 
-    tuner = kt.Hyperband(build_model,
-                         objective=kt.Objective("val_root_mean_squared_error", direction="min"),
-                         max_epochs=max_epochs,
-                         factor=3,
-                         directory='tuning_results',
-                         project_name=project_name,
-                         seed=42,
-                         overwrite=True)
-                         
-    stop_early = tf.keras.callbacks.EarlyStopping(
-        monitor='val_root_mean_squared_error', 
-        patience=10,
-        restore_best_weights=True
-    )
-    
-    tuner.search(tf_x_train, y_train_log, validation_data=(tf_x_valid, y_valid_log), 
-                 callbacks=[stop_early], verbose=2)
-                 
-    return tuner
+            preds = np.exp(model.predict(X_val_processed, verbose=0)).flatten()
+            
+            if np.isnan(preds).any() or np.isinf(preds).any():
+                raise optuna.TrialPruned("Model diverged resulting in NaN/Inf predictions.")
+                
+            rmses.append(root_mean_squared_error(y_val_fold, preds))
+            
+            val_rmse_history = history.history['val_rmse']
+            best_epochs.append(np.argmin(val_rmse_history) + 1)
+
+            trial.report(-np.mean(rmses), step=step)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+
+        trial.set_user_attr("optimal_epochs", int(np.mean(best_epochs)))
+        return -np.mean(rmses)
+
+    sampler = optuna.samplers.TPESampler(seed=random_state)
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=2)
+    study = optuna.create_study(direction='maximize', sampler=sampler, pruner=pruner)
+    study.optimize(objective, n_trials=n_trials)
+
+    class StudyWrapper:
+        def __init__(self, study):
+            self.best_value = study.best_value
+            self.best_params = study.best_params.copy()
+            self.best_params['optimal_epochs'] = study.best_trial.user_attrs.get("optimal_epochs", 50)
+            
+    return StudyWrapper(study)

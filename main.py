@@ -174,31 +174,36 @@ def main():
     def train_evaluate_dnn(df_train, df_test, preprocessor, model_name, dnn_params):
         print(f"Executando experimento: {model_name}...")
         
+        tf_x_train_full = preprocessor.fit_transform(df_train)
+        y_train_dnn_log_full = np.log(df_train['peak_ground_acceleration'].values)
+        
         gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=config.RANDOM_STATE)
-        train_idx, valid_idx = next(gss.split(df_train, df_train['peak_ground_acceleration'], groups=df_train['earthquake_id']))
+        train_idx, val_idx = next(gss.split(df_train, groups=df_train['earthquake_id']))
         
-        X_train_dnn = df_train.iloc[train_idx]
-        X_valid_dnn = df_train.iloc[valid_idx]
-        y_train_dnn = df_train['peak_ground_acceleration'].iloc[train_idx]
-        y_valid_dnn = df_train['peak_ground_acceleration'].iloc[valid_idx]
+        tf_x_train = tf_x_train_full[train_idx]
+        tf_x_val = tf_x_train_full[val_idx]
+        y_train_log = y_train_dnn_log_full[train_idx]
+        y_val_log = y_train_dnn_log_full[val_idx]
         
-        tf_x_train = preprocessor.fit_transform(X_train_dnn)
-        tf_x_valid = preprocessor.transform(X_valid_dnn)
-        
-        dnn_kwargs = {}
-        if 'n_hidden' in dnn_params: dnn_kwargs['n_hidden_layers'] = dnn_params['n_hidden']
-        if 'n_neurons' in dnn_params: dnn_kwargs['n_neurons'] = dnn_params['n_neurons']
-        if 'activation' in dnn_params: dnn_kwargs['activation'] = dnn_params['activation']
-        if 'learning_rate' in dnn_params: dnn_kwargs['learning_rate'] = dnn_params['learning_rate']
-        if 'dropout_rate' in dnn_params: dnn_kwargs['dropout_rate'] = dnn_params['dropout_rate']
+        dnn_kwargs = {
+            'n_hidden_layers': dnn_params.get('n_hidden_layers', dnn_params.get('n_hidden', 1)),
+            'n_neurons': dnn_params.get('n_neurons', 128),
+            'activation': dnn_params.get('activation', 'relu'),
+            'learning_rate': dnn_params.get('learning_rate', 0.001),
+            'dropout_rate': dnn_params.get('dropout_rate', 0.1),
+            'optimizer': dnn_params.get('optimizer', 'adam')
+        }
         
         model = build_dnn_model(**dnn_kwargs)
-        es = EarlyStopping(monitor='val_rmse', mode='min', verbose=0, patience=10, restore_best_weights=True)
         
-        y_train_dnn_log = np.log(y_train_dnn)
-        y_valid_dnn_log = np.log(y_valid_dnn)
+        es = EarlyStopping(monitor='val_rmse', mode='min', patience=15, restore_best_weights=True)
         
-        model.fit(tf_x_train, y_train_dnn_log, epochs=100, callbacks=[es], validation_data=(tf_x_valid, y_valid_dnn_log), verbose=0)
+        model.fit(
+            tf_x_train, y_train_log, 
+            validation_data=(tf_x_val, y_val_log),
+            epochs=150, batch_size=32, verbose=0,
+            callbacks=[es]
+        )
         
         pipeline = Pipeline([
             ('preprocessor', preprocessor),

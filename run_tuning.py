@@ -150,28 +150,16 @@ def main():
         
     elif args.model == 'dnn':
         trials = args.trials if args.trials is not None else 100
-        print(f"Máximo de épocas definidas: {trials}")
-        # DNN requer divisão de validação extra a partir do treino, conforme notebook original
-        # Utilizando GroupShuffleSplit para evitar data leakage de terremotos
-        gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=config.RANDOM_STATE)
-        train_idx, valid_idx = next(gss.split(X_train, y_train, groups))
+        print(f"Máximo de iterações definidas: {trials}")
+        study = tune_dnn(X_train, y_train, groups, preprocessor, n_trials=trials, random_state=config.RANDOM_STATE)
         
-        X_train_dnn = X_train.iloc[train_idx]
-        X_valid_dnn = X_train.iloc[valid_idx]
-        y_train_dnn = y_train.iloc[train_idx]
-        y_valid_dnn = y_train.iloc[valid_idx]
-        
-        tuner = tune_dnn(X_train_dnn, y_train_dnn, X_valid_dnn, y_valid_dnn, preprocessor, 
-                         max_epochs=trials, project_name=f'keras_tuner{output_suffix}')
-        
-        best_trial = tuner.oracle.get_best_trials(num_trials=1)[0]
         results = {
-            "best_score_val_rmse": best_trial.score,
-            "best_params": best_trial.hyperparameters.values
+            "best_score_neg_rmse": study.best_value,
+            "best_params": study.best_params
         }
         
-        print("\nSumário do melhor modelo Keras:")
-        print(best_trial.summary())
+        print("\nMelhores parâmetros encontrados para o DNN:")
+        print(results["best_params"])
 
     # 4. Salvando os resultados em disco
     with open(results_file, 'w', encoding='utf-8') as f:
