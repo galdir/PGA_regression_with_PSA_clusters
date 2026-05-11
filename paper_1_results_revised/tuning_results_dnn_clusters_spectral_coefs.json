@@ -1,16 +1,12 @@
 {
-    "best_score_val_rmse": 0.7864043712615967,
+    "best_score_neg_rmse": -42.166210644671864,
     "best_params": {
-        "n_hidden": 1,
-        "n_neurons": 855,
-        "learning_rate": 0.0010733251249694183,
-        "optimizer": "adam",
-        "activation": "swish",
+        "n_hidden_layers": 1,
+        "n_neurons": 308,
+        "learning_rate": 0.01130670408097989,
+        "optimizer": "nesterov",
+        "activation": "relu",
         "dropout_rate": 0.0,
-        "tuner/epochs": 34,
-        "tuner/initial_epoch": 12,
-        "tuner/bracket": 4,
-        "tuner/round": 3,
-        "tuner/trial_id": "0131"
+        "optimal_epochs": 16
     }
 }

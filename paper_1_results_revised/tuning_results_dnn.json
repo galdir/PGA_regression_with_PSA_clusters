@@ -1,12 +1,12 @@
 {
-    "best_score_neg_rmse": -43.25442235055597,
+    "best_score_neg_rmse": -43.410841192968704,
     "best_params": {
         "n_hidden_layers": 1,
-        "n_neurons": 903,
-        "learning_rate": 0.017649715848175724,
-        "optimizer": "sgd",
+        "n_neurons": 218,
+        "learning_rate": 0.006149887293601217,
+        "optimizer": "nesterov",
         "activation": "relu",
-        "dropout_rate": 0.1,
-        "optimal_epochs": 22
+        "dropout_rate": 0.0,
+        "optimal_epochs": 13
     }
 }
