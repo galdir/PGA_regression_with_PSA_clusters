@@ -313,7 +313,7 @@ def tune_dnn(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
     def objective(trial):
         n_hidden_layers = trial.suggest_int("n_hidden_layers", 1, 3)
         n_neurons = trial.suggest_int("n_neurons", 16, 512, log=True)
-        learning_rate = trial.suggest_float("learning_rate", 1e-4, 5e-2, log=True)
+        learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
         optimizer = trial.suggest_categorical("optimizer", ["adam", "nesterov", "sgd"])
         activation = trial.suggest_categorical("activation", ["relu", "swish"])
         dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5, step=0.1)
@@ -333,12 +333,12 @@ def tune_dnn(X_train: pd.DataFrame, y_train: pd.Series, groups: pd.Series,
             y_val_log = np.log(y_val_fold)
 
             model = build_dnn_model(n_hidden_layers, n_neurons, activation, learning_rate, dropout_rate, optimizer)
-            es = tf.keras.callbacks.EarlyStopping(monitor='val_rmse', mode='min', patience=15, restore_best_weights=True)
+            es = tf.keras.callbacks.EarlyStopping(monitor='val_rmse', mode='min', patience=10, restore_best_weights=True)
             
             history = model.fit(
                 X_train_processed, y_train_log,
                 validation_data=(X_val_processed, y_val_log),
-                epochs=150, batch_size=32, callbacks=[es], verbose=0
+                epochs=100, batch_size=32, callbacks=[es], verbose=0
             )
 
             preds = np.exp(model.predict(X_val_processed, verbose=0)).flatten()
